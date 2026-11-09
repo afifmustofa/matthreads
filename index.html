@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Threads MAT — Most Active Times</title>
+<style>
+  :root {
+    --page: #f4f4f2; --surface: #fcfcfb; --surface-2: #efefec; --border: #e2e1dc;
+    --ink: #0b0b0b; --ink-2: #52514e; --ink-3: #7d7c77; --grid: #e7e6e1;
+    --accent: #2a78d6; --accent-soft: #b7d3f6;
+    --empty: #efefec;
+    --r0:#cde2fb; --r1:#9ec5f4; --r2:#6da7ec; --r3:#3987e5; --r4:#256abf; --r5:#184f95; --r6:#0d366b;
+    --warn-bg: #fff4d6; --warn-ink: #6b4a00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #121211; --surface: #1a1a19; --surface-2: #242422; --border: #2f2f2c;
+      --ink: #f0efec; --ink-2: #c3c2b7; --ink-3: #8f8e86; --grid: #2c2c2a;
+      --accent: #3987e5; --accent-soft: #184f95;
+      --empty: #242422;
+      --r0:#104281; --r1:#184f95; --r2:#256abf; --r3:#3987e5; --r4:#6da7ec; --r5:#9ec5f4; --r6:#cde2fb;
+      --warn-bg: #3a2f10; --warn-ink: #f5d98a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink);
+         font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 24px 20px 48px; }
+  header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 12px; margin-bottom: 16px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--ink-2); margin: 2px 0 0; }
+  .meta { color: var(--ink-3); font-size: 12.5px; text-align: right; }
+  .banner { background: var(--warn-bg); color: var(--warn-ink); border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; font-size: 13px; }
+  .filters { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 18px; }
+  .filters label { font-size: 12.5px; color: var(--ink-2); display: flex; align-items: center; gap: 6px; }
+  select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .seg button { font: inherit; font-size: 13px; border: 0; background: transparent; color: var(--ink-2); padding: 5px 12px; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+  .kpi .label { font-size: 12.5px; color: var(--ink-2); }
+  .kpi .value { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .kpi .note { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
+  .card h2 { font-size: 15px; margin: 0 0 2px; }
+  .card .desc { font-size: 12.5px; color: var(--ink-2); margin: 0 0 14px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+  @media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } }
+  /* heatmap */
+  .hm-scroll { overflow-x: auto; }
+  .hm { display: grid; grid-template-columns: 52px repeat(24, minmax(22px, 1fr)); gap: 2px; min-width: 640px; }
+  .hm .rl { font-size: 12px; color: var(--ink-2); display: flex; align-items: center; }
+  .hm .cl { font-size: 11px; color: var(--ink-3); text-align: center; padding-bottom: 2px; font-variant-numeric: tabular-nums; }
+  .hm .cell { aspect-ratio: 1 / 1; border-radius: 4px; background: var(--empty); cursor: default; outline-offset: 1px; }
+  .hm .cell:hover, .hm .cell:focus { outline: 2px solid var(--ink); }
+  .legend { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); margin-top: 12px; flex-wrap: wrap; }
+  .legend .ramp { display: flex; gap: 2px; }
+  .legend .ramp span { width: 22px; height: 12px; border-radius: 3px; }
+  .legend .sw-empty { width: 12px; height: 12px; border-radius: 3px; background: var(--empty); display: inline-block; }
+  svg text { fill: var(--ink-3); font-size: 11px; font-variant-numeric: tabular-nums; }
+  svg .lab { fill: var(--ink); font-weight: 600; }
+  svg .gl { stroke: var(--grid); stroke-width: 1; }
+  .bar { fill: var(--accent-soft); }
+  .bar.hi { fill: var(--accent); }
+  .hit { fill: transparent; cursor: default; }
+  .hit:hover + .bar, .bar:hover { opacity: .85; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+  th { font-weight: 600; color: var(--ink-2); font-size: 12px; cursor: pointer; user-select: none; white-space: nowrap; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  td a { color: var(--accent); text-decoration: none; }
+  td .t { color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  details { margin-top: 12px; font-size: 13px; }
+  details summary { cursor: pointer; color: var(--ink-2); }
+  .tip { position: fixed; pointer-events: none; z-index: 10; background: var(--ink); color: var(--surface); padding: 7px 10px; border-radius: 8px; font-size: 12.5px; line-height: 1.4; opacity: 0; transition: opacity .08s; max-width: 240px; }
+  .tip b { font-weight: 650; }
+  .empty-msg { color: var(--ink-3); font-size: 13px; padding: 20px 0; text-align: center; }
+  footer { color: var(--ink-3); font-size: 12px; margin-top: 24px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Most Active Times — Threads</h1>
+      <p class="sub" id="acct">Memuat data…</p>
+    </div>
+    <div class="meta" id="updated"></div>
+  </header>
+
+  <div class="banner" id="demoBanner" hidden>
+    Ini <b>data contoh</b>. Data akun kamu akan muncul otomatis setelah secret <code>THREADS_ACCESS_TOKEN</code> diisi dan workflow <i>Update data Threads</i> berjalan (lihat README).
+  </div>
+
+  <div class="filters" role="group" aria-label="Filter">
+    <label>Periode
+      <select id="fPeriod">
+        <option value="7">7 hari</option>
+        <option value="30" selected>30 hari</option>
+        <option value="60">60 hari</option>
+        <option value="90">90 hari</option>
+        <option value="0">Semua data</option>
+      </select>
+    </label>
+    <label>Zona waktu
+      <select id="fTz">
+        <option value="7" selected>WIB (UTC+7)</option>
+        <option value="8">WITA (UTC+8)</option>
+        <option value="9">WIT (UTC+9)</option>
+      </select>
+    </label>
+    <label>Heatmap
+      <span class="seg" id="fMetric">
+        <button type="button" data-v="act" aria-pressed="true">Aktivitas audiens</button>
+        <button type="button" data-v="views" aria-pressed="false">Rata-rata views post</button>
+      </span>
+    </label>
+  </div>
+
+  <section class="kpis" id="kpis"></section>
+
+  <section class="card">
+    <h2 id="hmTitle">Heatmap aktivitas audiens</h2>
+    <p class="desc" id="hmDesc"></p>
+    <div class="hm-scroll"><div class="hm" id="heatmap" role="grid"></div></div>
+    <div class="legend" id="legend"></div>
+    <details>
+      <summary>Lihat sebagai tabel</summary>
+      <div class="hm-scroll" id="hmTable"></div>
+    </details>
+  </section>
+
+  <div class="grid2">
+    <section class="card">
+      <h2>Aktivitas audiens per jam</h2>
+      <p class="desc">Persentase reply audiens yang masuk di tiap jam. Batang berwarna tegas = 3 jam teratas.</p>
+      <div id="byHour"></div>
+    </section>
+    <section class="card">
+      <h2>Rata-rata views berdasarkan jam posting</h2>
+      <p class="desc">Seberapa banyak views yang didapat post, dikelompokkan dari jam kamu mempostingnya.</p>
+      <div id="viewsByHour"></div>
+    </section>
+  </div>
+
+  <div class="grid2">
+    <section class="card">
+      <h2>Aktivitas audiens per hari</h2>
+      <p class="desc">Persentase reply audiens per hari dalam seminggu.</p>
+      <div id="byDay"></div>
+    </section>
+    <section class="card">
+      <h2>Engagement rate berdasarkan jam posting</h2>
+      <p class="desc">(likes + replies + reposts + quotes) ÷ views, rata-rata per jam posting.</p>
+      <div id="erByHour"></div>
+    </section>
+  </div>
+
+  <section class="card" style="margin-top:12px">
+    <h2>Post dalam periode</h2>
+    <p class="desc">Klik judul kolom untuk mengurutkan.</p>
+    <div class="hm-scroll" id="postTable"></div>
+  </section>
+
+  <footer>Data: Threads API (post insights + timestamp reply). Threads tidak menyediakan data jam online follower, jadi MAT dihitung dari kapan audiens membalas dan performa post per jam posting.</footer>
+</div>
+<div class="tip" id="tip" role="tooltip"></div>
+
+<script>
+const DAYS = ["Senin","Selasa","Rabu","Kamis","Jumat","Sabtu","Minggu"];
+const DAYS_S = ["Sen","Sel","Rab","Kam","Jum","Sab","Min"];
+const TZN = {7:"WIB",8:"WITA",9:"WIT"};
+const state = { period: 30, tz: 7, metric: "act", sort: { key: "views", dir: -1 } };
+let DATA = null;
+
+const $ = id => document.getElementById(id);
+const fmt = n => n == null ? "–" : Number(n).toLocaleString("id-ID");
+const pct = (n, d = 1) => (n * 100).toLocaleString("id-ID", { maximumFractionDigits: d, minimumFractionDigits: d }) + "%";
+const hh = h => String((h + 24) % 24).padStart(2, "0") + ".00";
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+
+function local(ts) {
+  const l = ts + state.tz * 3600;
+  return { hour: Math.floor(l / 3600) % 24, dow: (Math.floor(l / 86400) + 3) % 7 };
+}
+
+/* ---------- tooltip ---------- */
+const tip = $("tip");
+function showTip(e, html) {
+  tip.innerHTML = html; tip.style.opacity = 1;
+  const r = tip.getBoundingClientRect();
+  let x = e.clientX + 14, y = e.clientY + 14;
+  if (x + r.width > innerWidth - 8) x = e.clientX - r.width - 14;
+  if (y + r.height > innerHeight - 8) y = e.clientY - r.height - 14;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+function hideTip() { tip.style.opacity = 0; }
+function bindTip(el, html) {
+  el.addEventListener("mousemove", e => showTip(e, html));
+  el.addEventListener("mouseleave", hideTip);
+  el.addEventListener("focus", () => { const r = el.getBoundingClientRect(); showTip({ clientX: r.right, clientY: r.bottom }, html); });
+  el.addEventListener("blur", hideTip);
+}
+
+/* ---------- aggregation ---------- */
+function compute() {
+  const cutoff = state.period ? Date.now() / 1000 - state.period * 86400 : 0;
+  const replies = DATA.reply_ts.filter(t => t >= cutoff);
+  const posts = DATA.posts.filter(p => p.ts >= cutoff);
+
+  const act = Array.from({ length: 7 }, () => Array(24).fill(0));
+  replies.forEach(t => { const l = local(t); act[l.dow][l.hour]++; });
+
+  const vSum = Array.from({ length: 7 }, () => Array(24).fill(0));
+  const vCnt = Array.from({ length: 7 }, () => Array(24).fill(0));
+  const hV = Array(24).fill(0), hN = Array(24).fill(0), hEr = Array(24).fill(0), hErN = Array(24).fill(0);
+  posts.forEach(p => {
+    const l = local(p.ts);
+    vSum[l.dow][l.hour] += p.views; vCnt[l.dow][l.hour]++;
+    hV[l.hour] += p.views; hN[l.hour]++;
+    if (p.views > 0) { hEr[l.hour] += er(p); hErN[l.hour]++; }
+  });
+  const vAvg = vSum.map((r, d) => r.map((s, h) => vCnt[d][h] ? s / vCnt[d][h] : null));
+
+  const byHour = Array(24).fill(0), byDay = Array(7).fill(0);
+  act.forEach((r, d) => r.forEach((v, h) => { byHour[h] += v; byDay[d] += v; }));
+
+  return { replies, posts, act, vAvg, vCnt, byHour, byDay,
+           viewsHour: hV.map((s, h) => hN[h] ? s / hN[h] : null), postsHour: hN,
+           erHour: hEr.map((s, h) => hErN[h] ? s / hErN[h] : null) };
+}
+function er(p) { return p.views ? (p.likes + p.replies + p.reposts + p.quotes) / p.views : 0; }
+
+/* ---------- KPIs ---------- */
+function renderKpis(c) {
+  const total = c.replies.length;
+  const el = $("kpis");
+  if (!total && !c.posts.length) { el.innerHTML = `<div class="card empty-msg">Belum ada data di periode ini.</div>`; return; }
+  // jendela 2 jam terbaik (melingkar)
+  let best = 0, bestH = 0;
+  for (let h = 0; h < 24; h++) { const s = c.byHour[h] + c.byHour[(h + 1) % 24]; if (s > best) { best = s; bestH = h; } }
+  const topDay = c.byDay.indexOf(Math.max(...c.byDay));
+  const cells = [];
+  c.act.forEach((r, d) => r.forEach((v, h) => cells.push({ d, h, v })));
+  cells.sort((a, b) => b.v - a.v);
+  const top3 = cells.slice(0, 3).filter(x => x.v > 0);
+  const tz = TZN[state.tz];
+  const ers = c.posts.filter(p => p.views).map(er);
+  const avgEr = ers.length ? ers.reduce((a, b) => a + b, 0) / ers.length : null;
+  el.innerHTML = `
+    <div class="card kpi"><div class="label">Waktu prime (2 jam teraktif)</div>
+      <div class="value">${total ? `${hh(bestH)}–${hh(bestH + 2)}` : "–"}</div>
+      <div class="note">${total ? `${pct(best / total)} reply masuk di jam ini · ${tz}` : "Belum ada reply"}</div></div>
+    <div class="card kpi"><div class="label">Saran jam posting</div>
+      <div class="value">${total ? hh(bestH - 1).replace(".00", ".30") : "–"}</div>
+      <div class="note">±30 menit sebelum puncak, supaya post sudah naik saat audiens ramai</div></div>
+    <div class="card kpi"><div class="label">Hari paling aktif</div>
+      <div class="value">${total ? DAYS[topDay] : "–"}</div>
+      <div class="note">${total ? `${pct(c.byDay[topDay] / total)} dari seluruh reply` : ""}</div></div>
+    <div class="card kpi"><div class="label">Slot teratas (hari × jam)</div>
+      <div class="value" style="font-size:16px;line-height:1.5;margin-top:6px">${top3.map(x => `${DAYS_S[x.d]} ${hh(x.h)}`).join("<br>") || "–"}</div></div>
+    <div class="card kpi"><div class="label">Data dianalisis</div>
+      <div class="value">${fmt(total)} <span style="font-size:14px;font-weight:500;color:var(--ink-2)">reply</span></div>
+      <div class="note">dari ${fmt(c.posts.length)} post${avgEr != null ? ` · rata-rata ER ${pct(avgEr)}` : ""}</div></div>`;
+}
+
+/* ---------- heatmap ---------- */
+const RAMP = ["--r0","--r1","--r2","--r3","--r4","--r5","--r6"];
+function renderHeatmap(c) {
+  const isAct = state.metric === "act";
+  const m = isAct ? c.act : c.vAvg;
+  const vals = m.flat().filter(v => v != null && v > 0);
+  const max = vals.length ? Math.max(...vals) : 0;
+  const tz = TZN[state.tz];
+  $("hmTitle").textContent = isAct ? "Heatmap aktivitas audiens" : "Heatmap rata-rata views post";
+  $("hmDesc").textContent = isAct
+    ? `Jumlah reply audiens per hari × jam (${tz}). Makin kuat warnanya = makin ramai — inilah Most Active Times kamu.`
+    : `Rata-rata views post berdasarkan hari × jam posting (${tz}). Kotak kosong = belum pernah posting di slot itu.`;
+
+  const g = $("heatmap"); g.innerHTML = "";
+  g.appendChild(Object.assign(document.createElement("div"), {}));
+  for (let h = 0; h < 24; h++) {
+    const d = document.createElement("div"); d.className = "cl"; d.textContent = h % 3 === 0 ? String(h).padStart(2, "0") : ""; g.appendChild(d);
+  }
+  const total = c.replies.length;
+  for (let d = 0; d < 7; d++) {
+    const rl = document.createElement("div"); rl.className = "rl"; rl.textContent = DAYS_S[d]; g.appendChild(rl);
+    for (let h = 0; h < 24; h++) {
+      const v = m[d][h];
+      const cell = document.createElement("div"); cell.className = "cell"; cell.tabIndex = 0; cell.setAttribute("role", "gridcell");
+      if (v != null && v > 0 && max) {
+        const i = Math.min(6, Math.floor(Math.sqrt(v / max) * 6.999));
+        cell.style.background = `var(${RAMP[i]})`;
+      }
+      const head = `<b>${DAYS[d]}, ${hh(h)}–${hh(h + 1)} ${tz}</b><br>`;
+      const html = isAct
+        ? head + `${fmt(v)} reply${total ? ` (${pct(v / total)})` : ""}`
+        : head + (v == null ? "Belum ada post di slot ini" : `Rata-rata ${fmt(Math.round(v))} views<br>${c.vCnt[d][h]} post`);
+      cell.setAttribute("aria-label", html.replace(/<[^>]+>/g, " "));
+      bindTip(cell, html);
+      g.appendChild(cell);
+    }
+  }
+  $("legend").innerHTML = `<span>${isAct ? "Sedikit" : "Rendah"}</span><span class="ramp">${RAMP.map(r => `<span style="background:var(${r})"></span>`).join("")}</span>
+    <span>${isAct ? "Ramai" : "Tinggi"} (maks ${fmt(Math.round(max))}${isAct ? " reply" : " views"})</span>
+    <span style="margin-left:12px"><span class="sw-empty"></span> ${isAct ? "tidak ada reply" : "tidak ada post"}</span>`;
+
+  // tabel aksesibel
+  let t = `<table><thead><tr><th>Jam</th>${DAYS_S.map(d => `<th class="n">${d}</th>`).join("")}</tr></thead><tbody>`;
+  for (let h = 0; h < 24; h++) {
+    t += `<tr><td>${hh(h)}</td>${DAYS_S.map((_, d) => `<td class="n">${m[d][h] == null ? "–" : fmt(Math.round(m[d][h]))}</td>`).join("")}</tr>`;
+  }
+  $("hmTable").innerHTML = t + "</tbody></table>";
+}
+
+/* ---------- bar chart (SVG) ---------- */
+function barChart(el, values, { labels, fmtV, tipFn, highlightTop = 0, labelEvery = 1 }) {
+  const W = 520, H = 210, L = 40, R = 8, T = 18, B = 26;
+  const n = values.length, pw = W - L - R, ph = H - T - B;
+  const present = values.filter(v => v != null);
+  if (!present.length || Math.max(...present) === 0) { el.innerHTML = `<div class="empty-msg">Belum ada data di periode ini.</div>`; return; }
+  const tick = niceStep(Math.max(...present) / 4), nt = Math.ceil(Math.max(...present) / tick), max = tick * nt;
+  const top = values.map((v, i) => [v ?? -1, i]).sort((a, b) => b[0] - a[0]).slice(0, highlightTop).map(x => x[1]);
+  const step = pw / n, bw = Math.max(4, step - 2);
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img">`;
+  for (let k = 0; k <= nt; k++) {
+    const y = T + ph - ph * k / nt;
+    s += `<line class="gl" x1="${L}" x2="${W - R}" y1="${y}" y2="${y}"/><text x="${L - 6}" y="${y + 4}" text-anchor="end">${fmtV(tick * k, true)}</text>`;
+  }
+  const peak = values.indexOf(Math.max(...present));
+  values.forEach((v, i) => {
+    const x = L + i * step + (step - bw) / 2;
+    if (v != null && v > 0) {
+      const h = Math.max(1, ph * v / max), y = T + ph - h, rr = Math.min(4, bw / 2, h);
+      s += `<path class="bar${top.includes(i) || !highlightTop ? " hi" : ""}" d="M${x},${T + ph} V${y + rr} Q${x},${y} ${x + rr},${y} H${x + bw - rr} Q${x + bw},${y} ${x + bw},${y + rr} V${T + ph} Z"/>`;
+      if (i === peak) s += `<text class="lab" x="${x + bw / 2}" y="${y - 5}" text-anchor="middle">${fmtV(v)}</text>`;
+    }
+    if (i % labelEvery === 0) s += `<text x="${x + bw / 2}" y="${H - 8}" text-anchor="middle">${labels[i]}</text>`;
+    s += `<rect class="hit" data-i="${i}" x="${L + i * step}" y="${T}" width="${step}" height="${ph}"/>`;
+  });
+  el.innerHTML = s + "</svg>";
+  el.querySelectorAll(".hit").forEach(r => bindTip(r, tipFn(+r.dataset.i)));
+}
+function niceStep(v) {
+  const p = Math.pow(10, Math.floor(Math.log10(v))), f = v / p;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+}
+
+function renderBars(c) {
+  const total = c.replies.length || 1, tz = TZN[state.tz];
+  const hours = [...Array(24).keys()];
+  const sh = c.byHour.map(v => v / total);
+  barChart($("byHour"), c.replies.length ? sh : [], {
+    labels: hours.map(h => String(h).padStart(2, "0")), labelEvery: 3, highlightTop: 3,
+    fmtV: (v, ax) => pct(v, ax ? 0 : 1),
+    tipFn: i => `<b>${hh(i)}–${hh(i + 1)} ${tz}</b><br>${fmt(c.byHour[i])} reply (${pct(sh[i])})`,
+  });
+  barChart($("viewsByHour"), c.viewsHour, {
+    labels: hours.map(h => String(h).padStart(2, "0")), labelEvery: 3,
+    fmtV: v => v >= 1000 ? (v / 1000).toLocaleString("id-ID", { maximumFractionDigits: 1 }) + "rb" : fmt(Math.round(v)),
+    tipFn: i => `<b>Posting ${hh(i)}–${hh(i + 1)} ${tz}</b><br>` + (c.postsHour[i] ? `Rata-rata ${fmt(Math.round(c.viewsHour[i]))} views<br>${c.postsHour[i]} post` : "Belum ada post"),
+  });
+  const sd = c.byDay.map(v => v / total);
+  barChart($("byDay"), c.replies.length ? sd : [], {
+    labels: DAYS_S, highlightTop: 2, fmtV: (v, ax) => pct(v, ax ? 0 : 1),
+    tipFn: i => `<b>${DAYS[i]}</b><br>${fmt(c.byDay[i])} reply (${pct(sd[i])})`,
+  });
+  barChart($("erByHour"), c.erHour, {
+    labels: hours.map(h => String(h).padStart(2, "0")), labelEvery: 3,
+    fmtV: (v, ax) => pct(v, ax ? 0 : 1),
+    tipFn: i => `<b>Posting ${hh(i)}–${hh(i + 1)} ${tz}</b><br>` + (c.erHour[i] != null ? `ER rata-rata ${pct(c.erHour[i])}<br>${c.postsHour[i]} post` : "Belum ada post"),
+  });
+}
+
+/* ---------- tabel post ---------- */
+function renderTable(c) {
+  const el = $("postTable");
+  if (!c.posts.length) { el.innerHTML = `<div class="empty-msg">Tidak ada post di periode ini.</div>`; return; }
+  const cols = [
+    { k: "ts", t: "Waktu posting" }, { k: "text", t: "Post" },
+    { k: "views", t: "Views", n: 1 }, { k: "likes", t: "Likes", n: 1 }, { k: "replies", t: "Replies", n: 1 },
+    { k: "reposts", t: "Reposts", n: 1 }, { k: "er", t: "ER", n: 1 },
+  ];
+  const rows = c.posts.map(p => ({ ...p, er: er(p) }));
+  const { key, dir } = state.sort;
+  rows.sort((a, b) => (a[key] > b[key] ? 1 : a[key] < b[key] ? -1 : 0) * dir);
+  const tz = TZN[state.tz];
+  const dt = ts => {
+    const l = new Date((ts + state.tz * 3600) * 1000);
+    return `${DAYS_S[local(ts).dow]}, ${l.getUTCDate()}/${l.getUTCMonth() + 1} ${String(l.getUTCHours()).padStart(2, "0")}.${String(l.getUTCMinutes()).padStart(2, "0")}`;
+  };
+  let h = `<table><thead><tr>${cols.map(c => `<th class="${c.n ? "n" : ""}" data-k="${c.k}">${c.t}${key === c.k ? (dir < 0 ? " ↓" : " ↑") : ""}</th>`).join("")}</tr></thead><tbody>`;
+  rows.slice(0, 100).forEach(p => {
+    const txt = esc(p.text || "(tanpa teks)");
+    h += `<tr><td style="white-space:nowrap">${dt(p.ts)} <span style="color:var(--ink-3)">${tz}</span></td>
+      <td><span class="t">${p.permalink ? `<a href="${esc(p.permalink)}" target="_blank" rel="noopener">${txt}</a>` : txt}</span></td>
+      <td class="n">${fmt(p.views)}</td><td class="n">${fmt(p.likes)}</td><td class="n">${fmt(p.replies)}</td>
+      <td class="n">${fmt(p.reposts)}</td><td class="n">${pct(p.er)}</td></tr>`;
+  });
+  el.innerHTML = h + "</tbody></table>";
+  el.querySelectorAll("th").forEach(th => th.addEventListener("click", () => {
+    const k = th.dataset.k;
+    state.sort = { key: k, dir: state.sort.key === k ? -state.sort.dir : -1 };
+    renderTable(compute());
+  }));
+}
+
+/* ---------- main ---------- */
+function render() {
+  const c = compute();
+  renderKpis(c); renderHeatmap(c); renderBars(c); renderTable(c);
+}
+
+$("fPeriod").addEventListener("change", e => { state.period = +e.target.value; render(); });
+$("fTz").addEventListener("change", e => { state.tz = +e.target.value; render(); });
+$("fMetric").querySelectorAll("button").forEach(b => b.addEventListener("click", () => {
+  state.metric = b.dataset.v;
+  $("fMetric").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+  render();
+}));
+
+fetch("data/threads.json?v=" + Date.now())
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+  .then(d => {
+    DATA = d;
+    $("demoBanner").hidden = !d.demo;
+    const a = d.account || {};
+    $("acct").textContent = `@${a.username || "-"}${a.followers != null ? ` · ${fmt(a.followers)} followers` : ""}`;
+    const g = new Date(d.generated_at);
+    $("updated").textContent = `Diperbarui ${g.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}`;
+    render();
+  })
+  .catch(err => { $("acct").textContent = "Gagal memuat data/threads.json (" + err.message + ")"; });
+</script>
+</body>
+</html>

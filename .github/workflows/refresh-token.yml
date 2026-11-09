@@ -1,0 +1,36 @@
+name: Perpanjang token Threads
+
+# Long-lived token Threads berlaku 60 hari. Workflow ini memperpanjangnya tiap minggu
+# lalu menyimpan token baru ke secret THREADS_ACCESS_TOKEN.
+# Butuh secret GH_PAT (fine-grained token dengan izin "Secrets: Read and write" untuk repo ini).
+
+on:
+  schedule:
+    - cron: "41 2 * * 1"   # tiap Senin 09:41 WIB
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refresh & simpan token
+        env:
+          OLD_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::Secret GH_PAT belum diisi — token tidak bisa diperpanjang otomatis. Perpanjang manual sebelum 60 hari."
+            exit 0
+          fi
+          RESP=$(curl -sS -G "https://graph.threads.net/refresh_access_token" \
+            --data-urlencode "grant_type=th_refresh_token" \
+            --data-urlencode "access_token=$OLD_TOKEN")
+          NEW=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))")
+          if [ -z "$NEW" ]; then
+            echo "::error::Gagal refresh token. Respons: $(echo "$RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('error',{}).get('message','?'))")"
+            exit 1
+          fi
+          echo "::add-mask::$NEW"
+          gh secret set THREADS_ACCESS_TOKEN --repo "$REPO" --body "$NEW"
+          echo "Token diperpanjang 60 hari."
